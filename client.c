@@ -12,7 +12,6 @@
 
 #define PAYLOAD 512
 #define MAXSEQ 25600
-#define MAXFILE 100000000
 
 struct packet
 {
@@ -23,8 +22,8 @@ struct packet
 	int16_t fin;
 	int16_t filler;
 
-	char data[PAYLOAD];
-	//char* data;
+	//char data[PAYLOAD];
+	char* data;
 };
 
 int main(int argc, char **argv)
@@ -117,11 +116,11 @@ int main(int argc, char **argv)
 	if(currSeq == 25601)
 		currSeq = 0;
 
-	fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
+	fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
 
 	message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
 
-	fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
+	fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
 
 
 	fptr = fopen(filename, "r");
@@ -132,17 +131,14 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	char file_content[MAXFILE];
-
-	fgets(file_content, PAYLOAD, (FILE*)fptr);
 
 	size_t buflen;
 	int end_process = 0;
 	int begin_process = 1;
 	while(1){
-		buflen = fread(buffer, PAYLOAD, (FILE*)fptr);
+		buflen = fread(buffer, PAYLOAD, 1, (FILE*)fptr);
 		if (buflen < 1) {
-	        if (!feof(fp)) {
+	        if (!feof(fptr)) {
 	            perror("ERROR:reading file\n");
 				exit(1);
 	        }
@@ -158,7 +154,10 @@ int main(int argc, char **argv)
 				perror("ERROR:sending message");
 				exit(1);
 			} 
+			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
 			message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
+			fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
+
 			if(pr.syn && pr.ack){
 				ps.seq_num = pr.ack_num;
 				ps.ack_num = (pr.seq_num + 1) % 25600;
@@ -170,6 +169,7 @@ int main(int argc, char **argv)
 					perror("ERROR:sending message");
 					exit(1);
 				} 
+				fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
 			}
 			begin_process = 0;
 		}
@@ -186,16 +186,17 @@ int main(int argc, char **argv)
 				perror("ERROR:sending message");
 				exit(1);
 			} 
+			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
 			currSeq += 1;
 			if(currSeq == 25601)
 				currSeq = 0;
 
-			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
 
 			do
 			{
 				memset((char *) &pr, 0, sizeof(pr));
 				message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
+				fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
 			}while(pr.ack != 1 && pr.ack_num != currSeq);
 			
 			//wait 2 seconds while responding to each incoming FIN with ack while dropping other packets
@@ -210,6 +211,7 @@ int main(int argc, char **argv)
 				end = time(NULL);
 				elapsed = difftime(end, start);
 				message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
+				fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
 			
 				if(pr.fin == 1)
 				{
@@ -225,6 +227,8 @@ int main(int argc, char **argv)
 						perror("ERROR:sending message");
 						exit(1);
 					} 
+					fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
+
 				}
 			}
 
@@ -233,6 +237,7 @@ int main(int argc, char **argv)
 		//regular package send
 		else{
 			message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
+			fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
 			ps.seq_num = pr.ack_num;
 			ps.ack_num = (pr.seq_num + 1) % 25600;
 			ps.ack = 1;
@@ -243,12 +248,15 @@ int main(int argc, char **argv)
 				perror("ERROR:sending message");
 				exit(1);
 			} 
+			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
+
 		}
 	
 
 
 	}
 	fclose(fptr);
+}
 
 
 	
