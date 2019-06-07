@@ -41,8 +41,8 @@ int main(int argc, char **argv)
 	socklen_t addr_len;
 	int message_size;
 
-	int16_t currSeq;
-	int16_t currAck;
+	int16_t currSeq; //current seq number
+	int16_t currAck; //expected seq number
 
 	FILE *fptr;
 
@@ -181,7 +181,6 @@ int main(int argc, char **argv)
 			ps.syn = 0;
 			ps.fin = 1;
 
-			currAck = currSeq + 1;
 
 			if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
 				perror("ERROR:sending message");
@@ -197,7 +196,7 @@ int main(int argc, char **argv)
 			{
 				memset((char *) &pr, 0, sizeof(pr));
 				message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
-			}while(pr.ack != 1 && pr.ack_num != currAck);
+			}while(pr.ack != 1 && pr.ack_num != currSeq);
 			
 			//wait 2 seconds while responding to each incoming FIN with ack while dropping other packets
 			time_t start, end;
