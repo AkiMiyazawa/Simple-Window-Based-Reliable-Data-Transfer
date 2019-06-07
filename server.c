@@ -10,6 +10,7 @@
 #include <signal.h>
 
 #define BUFSIZE 524
+#define PAYLOAD 512
 
 struct packet
 {
@@ -20,8 +21,8 @@ struct packet
 	int16_t fin;
 	int16_t filler;
 
-	//char data[PAYLOAD];
-	char* data;
+	char data[PAYLOAD];
+	//char* data;
 };
 
 int filenum;
@@ -107,7 +108,12 @@ int main(int argc, char **argv)
 			perror("ERROR:syn not set\n");
 		}
 		filenum += 1;
-		sprintf(filename, "%d", filenum);
+
+		int length = snprintf(NULL, 0, "%d", filenum);
+		filename = malloc(length + 1);
+		snprintf(filename, length + 1, "%d", filenum);
+
+		//sprintf(filename, "%d", filenum);
 		fptr = fopen(filename, "w");
 		if (fptr == NULL)
 		{
@@ -117,6 +123,7 @@ int main(int argc, char **argv)
 
 
 		//set seq num
+		srand(time(0));
 		ps.seq_num = rand() % 25601;
 
 		//set ack num
@@ -147,7 +154,8 @@ int main(int argc, char **argv)
 
 		struct timeval tv;
 		tv.tv_sec = 0;
-		tv.tv_usec = 10000000;
+		//tv.tv_usec = 10000000;
+		tv.tv_usec = 100000;
 
 		if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
 		{
