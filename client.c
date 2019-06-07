@@ -12,6 +12,7 @@
 
 #define PAYLOAD 512
 #define MAXSEQ 25600
+#define MAXFILE 100000000
 
 struct packet
 {
@@ -37,8 +38,9 @@ int main(int argc, char **argv)
 	int port;
 	struct hostent *he;
 
-	int addr_len;
+	socklen_t addr_len;
 	int message_size;
+
 
 	FILE *fptr;
 
@@ -96,7 +98,7 @@ int main(int argc, char **argv)
 
 	srand(time(0));
 
-	ps.seq_num = rand() % 2560 + 1;
+	ps.seq_num = rand() % 25600;
 	ps.ack_num = 0;
 	ps.ack = 0;
 	ps.syn = 1;
@@ -115,16 +117,88 @@ int main(int argc, char **argv)
 
 	fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
 
-	fprintf(stdout, "%d", sizeof(ps));
 
 	fptr = fopen(filename, "r");
+
 	if (fptr == NULL)
 	{
 		perror("ERROR:opening file\n");
 		exit(1);
 	}
 
-	fgets(ps.data, PAYLOAD, (FILE*)fptr);
+	char file_content[MAXFILE];
+
+	fgets(file_content, PAYLOAD, (FILE*)fptr);
+
+	size_t buflen;
+	int end_process = 0;
+	int begin_process = 1;
+	while(1){
+		buflen = fread(buffer, PAYLOAD, (FILE*)fptr);
+		if (buflen < 1) {
+	        if (!feof(fp)) {
+	            perror("ERROR:reading file\n");
+				exit(1);
+	        }
+	        else{
+	        	end_process = 1;
+	        	continue;
+	        }
+        	break;
+	    }
+	    //3 way hand shake thing
+		if(begin_process){
+			if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
+				perror("ERROR:sending message");
+				exit(1);
+			} 
+			message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
+			if(pr.syn && pr.ack){
+				ps.seq_num = pr.ack_num;
+				ps.ack_num = (pr.seq_num + 1) % 25600;
+				ps.ack = 1;
+				ps.syn = 0;
+				ps.fin = 0;
+				ps.data = buffer;
+				if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
+					perror("ERROR:sending message");
+					exit(1);
+				} 
+			}
+			begin_process = 0;
+		}
+		else if(end_process){
+			ps.seq_num = pr.ack_num;
+			ps.ack_num = 0;
+			ps.ack = 0;
+			ps.syn = 0;
+			ps.fin = 1;
+			ps.data = {0};
+			if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
+				perror("ERROR:sending message");
+				exit(1);
+			} 
+			//do the waiting thing here and then the end game
+			exit(0);
+		}
+		//regular package send
+		else{
+			message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
+			ps.seq_num = pr.ack_num;
+			ps.ack_num = (pr.seq_num + 1) % 25600;
+			ps.ack = 1;
+			ps.syn = 0;
+			ps.fin = 0;
+			ps.data = buffer;
+			if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
+				perror("ERROR:sending message");
+				exit(1);
+			} 
+		}
+	
+
+
+	}
 	fclose(fptr);
 
 
