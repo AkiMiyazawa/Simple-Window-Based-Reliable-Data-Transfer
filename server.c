@@ -202,7 +202,7 @@ int main(int argc, char **argv)
 				memset((char *) &ps, 0, sizeof(ps));
 				//send message acking current message
 				ps.seq_num = nextSeq;
-				currAck = currAck + pr.size;
+				currAck = (currAck + pr.size) % 25600;
 				ps.ack_num = currAck;
 				ps.ack = 1;
 				ps.syn = 0;
