@@ -9,10 +9,10 @@
 #include <stdint.h>
 #include <netdb.h>
 #include <inttypes.h>
-#include <time.h>
 
 #define PAYLOAD 512
 #define MAXSEQ 25600
+#define MAXCONG 20
 
 struct packet
 {
@@ -29,6 +29,7 @@ struct packet
 
 int main(int argc, char **argv)
 {
+
 	int sockfd;
 	char buffer[PAYLOAD] = {'\0'};
 	struct sockaddr_in serveraddr;
@@ -50,8 +51,8 @@ int main(int argc, char **argv)
 	struct packet ps;
 	struct packet pr;
 
-	int cwnd = 0;
-	int ssthresh = 0;
+	int cwnd = 1;
+	int ssthresh = 10;
 
 	if(argc != 4)
 	{
@@ -174,22 +175,71 @@ int main(int argc, char **argv)
     	exit(1);
     } 
     fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
-    
-	while(1)
-	{
+
+
+
+
+
+
+    clock_t begin;
+    double time_spent;
+    int firstiter = 1;
+    int16_t prev_ack = -1;
+    int dup_count = 0;
+
+	while(1){
 		memset((char *) &ps, 0, sizeof(ps));
 		memset((char *) &pr, 0, sizeof(pr));
-		message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
-		fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
-		if(message_size < 0)
-		{
-			//timeout
-			close(sockfd);
-			perror("ERROR:Timeout");
+		if(!firstiter){
+			time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
+	        if (time_spent>=0.5){
+	            ssthresh = 2;
+				if ((cwnd/2)>2){
+					ssthresh = cwnd/2;
+				}
+				cwnd = 1;
+	        }
+	        if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
+			perror("ERROR:sending message");
 			exit(1);
+			} 
+			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
 		}
-		else if(end_process)
-		{
+		else{
+			firstiter = 0;
+		}
+		message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
+		if(prev_ack == pr.ack_num){
+			dup_count++;
+			if (dup_count == 3){
+				ssthresh = 2;
+				if ((cwnd/2)>2){
+					ssthresh = cwnd/2;
+				}
+				cwnd = ssthresh + 3;
+				continue;
+			}
+			else if(dup_count > 3){
+				cwnd += 1;
+			}
+
+		}
+		else if(dup_count >= 3 && prev_ack != pr.ack_num){
+			cwnd = ssthresh;
+		}
+		prev_ack = pr.ack_num;
+		begin = clock();
+		fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
+		if(pr.ack == 1){
+			if(cwnd < ssthresh){
+				cwnd += 1;
+			}
+			else{
+				cwnd = cwnd + (1/cwnd);
+			}
+		}
+
+		if(end_process){
 			memset((char *) &ps, 0, sizeof(ps));
 			ps.seq_num = currSeq + 1;
 			ps.ack_num = 0;
@@ -217,14 +267,10 @@ int main(int argc, char **argv)
 			}while(pr.ack != 1 && pr.ack_num != currSeq);
 			
 			//wait 2 seconds while responding to each incoming FIN with ack while dropping other packets
-			
-
 			int leave = 1;
-
 			struct timeval start, end;
 			gettimeofday(&start, NULL);
 			struct timeval timeout2 = {1, 0};
-
 			if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout2, sizeof(struct timeval)) < 0)
 			{
 				perror("ERROR:setting timeout\n");
@@ -275,7 +321,7 @@ int main(int argc, char **argv)
 		        }
 		        else{
 		        	end_process = 1;
-		        	//continue;
+		        	continue;
 		        }
 		    }
 			ps.seq_num = pr.ack_num;
