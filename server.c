@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <sys/time.h>
 #include <signal.h>
+#include <inttypes.h>
 
 #define BUFSIZE 524
 #define PAYLOAD 512
@@ -21,8 +22,8 @@ struct packet
 	int16_t fin;
 	int16_t filler;
 
-	char data[PAYLOAD];
-	//char* data;
+	//char data[PAYLOAD];
+	char* data;
 };
 
 int filenum;
@@ -54,6 +55,9 @@ int main(int argc, char **argv)
 
 	struct packet ps;
 	struct packet pr;
+
+	int cwnd = 0;
+	int ssthresh = 0;
 
 	filenum = 0;
 	
@@ -101,8 +105,13 @@ int main(int argc, char **argv)
 
 		memset((char *) &ps, 0, sizeof(ps));
 		memset((char *) &pr, 0, sizeof(pr));
-		message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *) &clientaddr, &addr_len);
+		while(message_size <= 0)
+		{
+			message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *) &clientaddr, &addr_len);
+		}
 		
+		fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
+
 		if(pr.syn == 0)
 		{
 			perror("ERROR:syn not set\n");
@@ -139,9 +148,9 @@ int main(int argc, char **argv)
 		ps.fin = 0;
 
 		currAck = ps.ack_num;
-		nextSeq = ps.seq_num + sizeof(ps);
-		if(nextSeq > 25600)
-				nextSeq -= 25600;
+		nextSeq = ps.seq_num + 1;
+		if(nextSeq == 25601)
+				nextSeq = 0;
 
 		//send SYN response
 		if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&clientaddr, sizeof(clientaddr)) < 0)
@@ -150,19 +159,23 @@ int main(int argc, char **argv)
 			exit(1);
 		} 
 
+		fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
+
 		memset((char *) &pr, 0, sizeof(pr));
 
-		struct timeval tv;
-		tv.tv_sec = 0;
+		struct timeval timeout = {10, 0};
+		//tv.tv_sec = 0;
 		//tv.tv_usec = 10000000;
-		tv.tv_usec = 100000;
+		//tv.tv_usec = 100000;
 
-		if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
+		if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(struct timeval)) < 0)
 		{
 			perror("ERROR:setting timeout\n");
 		}
 
 		message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *) &clientaddr, &addr_len);
+
+		fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
 		
 		while(pr.fin != 0 && message_size >= 0)
 		{
@@ -175,6 +188,8 @@ int main(int argc, char **argv)
 					perror("ERROR:sending message\n");
 					exit(1);
 				} 	
+
+				fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
 				
 			}
 			else
@@ -182,36 +197,48 @@ int main(int argc, char **argv)
 				//copy data from client to file
 				fwrite(pr.data, 1, sizeof(pr.data), fptr);
 
+				//temp
+				fprintf(stdout, "WRITE %s\nFILE %s\n", pr.data, filename);
+
 				memset((char *) &ps, 0, sizeof(ps));
 				//send message acking current message
 				ps.seq_num = nextSeq;
-				ps.ack_num = pr.seq_num + message_size;
+				currAck = currAck + sizeof(pr.data);
+				ps.ack_num = currAck;
 				ps.ack = 1;
 				ps.syn = 0;
 				ps.fin = 0;
 
-				nextSeq += sizeof(ps);
+				nextSeq += 1;
+				//nextSeq += sizeof(ps);
 				if(nextSeq > 25600)
 					nextSeq -= 25600;
-			}
-			
-			
 
-			
-					
+				if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&clientaddr, sizeof(clientaddr)) < 0)
+				{
+					perror("ERROR:sending message\n");
+					exit(1);
+				} 	
+
+				fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
+			}
+		
 			//get new message
 			memset((char *) &pr, 0, sizeof(pr));
 			message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *) &clientaddr, &addr_len);
+			fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
+
 		}
 		//recieved packet with FIN or timeout
 
-		if(message_size < 0)
+		if(message_size >= 0)
 		{
+			fprintf(stdout, "lmao");
 			//FIN
 			memset((char *) &ps, 0, sizeof(ps));
 			ps.seq_num = nextSeq;
-			ps.ack_num = pr.seq_num + message_size;
-			ps.ack = 1;
+			ps.ack_num = 0;
+			ps.ack = 0;
 			ps.syn = 0;
 			ps.fin = 1;
 
@@ -226,14 +253,19 @@ int main(int argc, char **argv)
 					perror("ERROR:sending message\n");
 					exit(1);
 				} 	
+				fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
+
 
 				memset((char *) &pr, 0, sizeof(pr));
 				message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *) &clientaddr, &addr_len);
+				fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
+
 			}while(pr.ack_num != nextSeq);
 		}
 		
 		
 		fclose(fptr);
+		fprintf(stdout, "ALL DONE\n");
 	}
 
 }
