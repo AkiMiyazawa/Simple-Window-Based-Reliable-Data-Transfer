@@ -280,7 +280,6 @@ int main(int argc, char **argv)
 		
 		
 		fclose(fptr);
-		fprintf(stdout, "ALL DONE\n");
 	}
 
 }
