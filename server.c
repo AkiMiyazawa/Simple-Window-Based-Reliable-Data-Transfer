@@ -101,7 +101,7 @@ int main(int argc, char **argv)
 	
 	while(1)
 	{
-		
+		message_size = 0;
 
 		memset((char *) &ps, 0, sizeof(ps));
 		memset((char *) &pr, 0, sizeof(pr));
@@ -177,7 +177,7 @@ int main(int argc, char **argv)
 
 		fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
 		
-		while(pr.fin != 0 && message_size >= 0)
+		while(pr.fin == 0 && message_size >= 0)
 		{
 			//make sure message acked last sent and seq num is expected
 			if(pr.ack_num < nextSeq || pr.seq_num != currAck)
@@ -195,10 +195,14 @@ int main(int argc, char **argv)
 			else
 			{
 				//copy data from client to file
-				fwrite(pr.data, 1, sizeof(pr.data), fptr);
+				//fprintf(stdout, "%s", pr.data);
+				//fwrite(pr.data, 1, sizeof(pr.data), fptr);
+				char* buffer = strdup(pr.data);
+				fwrite((buffer), sizeof(buffer), 1, fptr);
+				//fprintf(stdout, "%s", pr.data);
 
 				//temp
-				fprintf(stdout, "WRITE %s\nFILE %s\n", pr.data, filename);
+				//fprintf(stdout, "WRITE %s\nFILE %s\n", pr.data, filename);
 
 				memset((char *) &ps, 0, sizeof(ps));
 				//send message acking current message
@@ -233,8 +237,25 @@ int main(int argc, char **argv)
 
 		if(message_size >= 0)
 		{
-			fprintf(stdout, "lmao");
 			//FIN
+			memset((char *) &ps, 0, sizeof(ps));
+			ps.seq_num = nextSeq;
+			ps.ack_num = (pr.seq_num + 1) % 25600;
+			ps.ack = 1;
+			ps.syn = 0;
+			ps.fin = 0;
+
+			//nextSeq += sizeof(ps);
+			/*nextSeq += 1;
+			if(nextSeq > 25600)
+				nextSeq -= 25600;*/
+			if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&clientaddr, sizeof(clientaddr)) < 0)
+			{
+				perror("ERROR:sending message\n");
+				exit(1);
+			} 	
+			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
+
 			memset((char *) &ps, 0, sizeof(ps));
 			ps.seq_num = nextSeq;
 			ps.ack_num = 0;
@@ -242,9 +263,7 @@ int main(int argc, char **argv)
 			ps.syn = 0;
 			ps.fin = 1;
 
-			nextSeq += sizeof(ps);
-			if(nextSeq > 25600)
-				nextSeq -= 25600;
+			nextSeq = (nextSeq + 1) % 25600;
 
 			do
 			{
@@ -258,6 +277,7 @@ int main(int argc, char **argv)
 
 				memset((char *) &pr, 0, sizeof(pr));
 				message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *) &clientaddr, &addr_len);
+				//if message_size <= 1
 				fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
 
 			}while(pr.ack_num != nextSeq);
