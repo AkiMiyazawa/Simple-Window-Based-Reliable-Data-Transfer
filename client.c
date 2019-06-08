@@ -202,12 +202,12 @@ int main(int argc, char **argv)
 					ssthresh = cwnd/2;
 				}
 				cwnd = 1;
+				if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
+					perror("ERROR:sending message");
+					exit(1);
+				} 
+				fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId8 " %" PRId8 " %" PRId8 " %" PRId8 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin,ps.dup);
 	        }
-	        if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
-			perror("ERROR:sending message");
-			exit(1);
-			} 
-			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId8 " %" PRId8 " %" PRId8 " %" PRId8 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin,ps.dup);
 		}
 		else{
 			firstiter = 0;
