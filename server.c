@@ -17,9 +17,9 @@ struct packet
 {
 	int16_t seq_num;
 	int16_t ack_num;
-	int16_t ack;
-	int16_t syn;
-	int16_t fin;
+	int8_t ack;
+	int8_t syn;
+	int8_t fin;
 	int16_t size;
 
 	char data[PAYLOAD];
@@ -117,9 +117,9 @@ int main(int argc, char **argv)
 		}
 		filenum += 1;
 
-		int length = snprintf(NULL, 0, "%d", filenum);
+		int length = snprintf(NULL, 0, "%d.file", filenum);
 		filename = malloc(length + 1);
-		snprintf(filename, length + 1, "%d", filenum);
+		snprintf(filename, length + 1, "%d.file", filenum);
 
 		//sprintf(filename, "%d", filenum);
 		fptr = fopen(filename, "w");
@@ -280,6 +280,7 @@ int main(int argc, char **argv)
 		
 		
 		fclose(fptr);
+		fprintf(stdout, "ALL DONE\n");
 	}
 
 }
