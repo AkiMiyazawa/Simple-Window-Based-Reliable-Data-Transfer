@@ -18,10 +18,11 @@ struct packet
 {
 	int16_t seq_num;
 	int16_t ack_num;
-	int16_t ack;
-	int16_t syn;
-	int16_t fin;
+	int8_t ack;
+	int8_t syn;
+	int8_t fin;
 	int16_t size;
+	int8_t dup;
 
 	char data[PAYLOAD];
 	//char* data;
@@ -131,11 +132,11 @@ int main(int argc, char **argv)
 		perror("ERROR:setting timeout\n");
 	}
 
-	fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
+	fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId8 " %" PRId8 " %" PRId8 " %" PRId8 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin,ps.dup);
 
 	message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
 
-	fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
+	fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId8 " %" PRId8 " %" PRId8 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
 
 	memset((char *) &ps, 0, sizeof(ps));
 
@@ -174,25 +175,28 @@ int main(int argc, char **argv)
     	perror("ERROR:sending message");
     	exit(1);
     } 
-    fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
+    fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId8 " %" PRId8 " %" PRId8 " %" PRId8 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin,ps.dup);
 
 
 
-
-
-
-    clock_t begin;
-    double time_spent;
     int firstiter = 1;
     int16_t prev_ack = -1;
     int dup_count = 0;
+
+    struct timeval start1, end1;
+	gettimeofday(&start1, NULL);
+	struct timeval timeout3 = {1, 0};
+	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout3, sizeof(struct timeval)) < 0)
+	{
+		perror("ERROR:setting timeout\n");
+	}
 
 	while(1){
 		memset((char *) &ps, 0, sizeof(ps));
 		memset((char *) &pr, 0, sizeof(pr));
 		if(!firstiter){
-			time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
-	        if (time_spent>=0.5){
+			gettimeofday(&end1, NULL);
+	        if(end1.tv_sec - start1.tv_sec > 0.5){
 	            ssthresh = 2;
 				if ((cwnd/2)>2){
 					ssthresh = cwnd/2;
@@ -203,12 +207,13 @@ int main(int argc, char **argv)
 			perror("ERROR:sending message");
 			exit(1);
 			} 
-			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
+			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId8 " %" PRId8 " %" PRId8 " %" PRId8 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin,ps.dup);
 		}
 		else{
 			firstiter = 0;
 		}
 		message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
+		gettimeofday(&start1, NULL);
 		if(prev_ack == pr.ack_num){
 			dup_count++;
 			if (dup_count == 3){
@@ -217,7 +222,6 @@ int main(int argc, char **argv)
 					ssthresh = cwnd/2;
 				}
 				cwnd = ssthresh + 3;
-				continue;
 			}
 			else if(dup_count > 3){
 				cwnd += 1;
@@ -227,9 +231,11 @@ int main(int argc, char **argv)
 		else if(dup_count >= 3 && prev_ack != pr.ack_num){
 			cwnd = ssthresh;
 		}
-		prev_ack = pr.ack_num;
-		begin = clock();
-		fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
+		else{
+			prev_ack = pr.ack_num;
+			dup_count = 0;
+		}
+		fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId8 " %" PRId8 " %" PRId8 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
 		if(pr.ack == 1){
 			if(cwnd < ssthresh){
 				cwnd += 1;
@@ -257,13 +263,13 @@ int main(int argc, char **argv)
 			if(currSeq == 25601)
 				currSeq = 0;
 
-			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
+			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId8 " %" PRId8 " %" PRId8 " %" PRId8 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin,ps.dup);
 
 			do
 			{
 				memset((char *) &pr, 0, sizeof(pr));
 				message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
-				fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
+				fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId8 " %" PRId8 " %" PRId8 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
 			}while(pr.ack != 1 && pr.ack_num != currSeq);
 			
 			//wait 2 seconds while responding to each incoming FIN with ack while dropping other packets
@@ -339,14 +345,14 @@ int main(int argc, char **argv)
 				perror("ERROR:sending message");
 				exit(1);
 			} 
-			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
+			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId8 " %" PRId8 " %" PRId8 " %" PRId8 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin,ps.dup);
 		}
 		else{
 			if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
 			perror("ERROR:sending message");
 			exit(1);
 			} 
-			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
+			fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId8 " %" PRId8 " %" PRId8 " %" PRId8 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin,ps.dup);
 		}
 
 	}
