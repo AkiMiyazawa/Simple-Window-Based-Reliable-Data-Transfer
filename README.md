@@ -12,6 +12,6 @@ Nicholas:
 server.c
 ,debugging for client.c
 
-Akikazu
+Akikazu:
 client.c
 ,debugging for server.c
