@@ -29,7 +29,7 @@ struct packet
 int main(int argc, char **argv)
 {
 	int sockfd;
-	char buffer[PAYLOAD] = {0};
+	char buffer[PAYLOAD] = {'\0'};
 	struct sockaddr_in serveraddr;
 
 	char *hostname;
@@ -137,7 +137,7 @@ int main(int argc, char **argv)
 		perror("ERROR:opening file\n");
 		exit(1);
 	}
-
+	memset((char *) &buffer, '\0', sizeof(buffer));
 	buflen = fread(buffer, PAYLOAD,1, (FILE*)fptr);
 	if (buflen < 1) {
         if (!feof(fptr)) {
@@ -156,7 +156,8 @@ int main(int argc, char **argv)
     ps.ack = 1;
     ps.syn = 0;
     ps.fin = 0;
-    ps.data = buffer;
+    //ps.data = buffer;
+    ps.data = strdup(buffer);
 
     if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
     	perror("ERROR:sending message");
@@ -169,7 +170,7 @@ int main(int argc, char **argv)
 		fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
 		if(end_process){
 			memset((char *) &ps, 0, sizeof(ps));
-			ps.seq_num = currSeq;
+			ps.seq_num = currSeq + 1;
 			ps.ack_num = 0;
 			ps.ack = 0;
 			ps.syn = 0;
@@ -195,7 +196,7 @@ int main(int argc, char **argv)
 			
 			//wait 2 seconds while responding to each incoming FIN with ack while dropping other packets
 			time_t start, end;
-			double elapsed;
+			double elapsed = 0;
 			start = time(NULL);
 
 			while(elapsed < 2)
@@ -206,7 +207,6 @@ int main(int argc, char **argv)
 				elapsed = difftime(end, start);
 				message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
 				fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
-			
 				if(pr.fin == 1)
 				{
 					//ack
@@ -223,10 +223,12 @@ int main(int argc, char **argv)
 					} 
 				}
 			}
-			break;
+			//break;
+			exit(0);
 		}
 		else if ((currSeq + buflen == pr.ack_num) && (currAck == pr.seq_num)){
 			memset((char *) &ps, 0, sizeof(ps));
+			memset((char *) &buffer, '\0', sizeof(buffer));
 			buflen = fread(buffer, PAYLOAD,1, (FILE*)fptr);
 			if (buflen < 1) {
 		        if (!feof(fptr)) {
@@ -245,7 +247,11 @@ int main(int argc, char **argv)
 			ps.ack = 1;
 			ps.syn = 0;
 			ps.fin = 0;
-			ps.data = buffer;
+			//ps.data = buffer;
+			fprintf(stdout, "%s\n", buffer);
+			ps.data = strdup(buffer);
+			fprintf(stdout, "%s\n", ps.data);
+
 			if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
 				perror("ERROR:sending message");
 				exit(1);
