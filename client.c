@@ -113,7 +113,7 @@ int main(int argc, char **argv)
 	} 
 
 	currSeq = ps.seq_num;
-	if(currSeq == 25601)
+	if(currSeq == 25600)
 		currSeq = 0;
 
 	currAck = 0;
@@ -160,7 +160,6 @@ int main(int argc, char **argv)
     ps.syn = 0;
     ps.fin = 0;
     ps.size = buflen;
-   
 
     if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
     	perror("ERROR:sending message");
@@ -233,7 +232,7 @@ int main(int argc, char **argv)
 			//break;
 			exit(0);
 		}
-		else if ((currSeq + buflen == pr.ack_num) && (currAck == pr.seq_num)){
+		else if ((((currSeq + buflen)%25600) == pr.ack_num) && (currAck == pr.seq_num)){
 			memset((char *) &ps, 0, sizeof(ps));
 			memset((char *) &buffer, '\0', sizeof(buffer));
 			buflen = fread(ps.data, 1,PAYLOAD, fptr);
