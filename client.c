@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <netdb.h>
 #include <inttypes.h>
+#include <time.h>
 
 #define PAYLOAD 512
 #define MAXSEQ 25600
@@ -122,6 +123,13 @@ int main(int argc, char **argv)
 	int begin_process = 1;
 	int redo = 0;
 
+	struct timeval timeout = {10, 0};
+
+	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(struct timeval)) < 0)
+	{
+		perror("ERROR:setting timeout\n");
+	}
+
 	fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
 
 	message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
@@ -166,13 +174,22 @@ int main(int argc, char **argv)
     	exit(1);
     } 
     fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
-
-	while(1){
+    
+	while(1)
+	{
 		memset((char *) &ps, 0, sizeof(ps));
 		memset((char *) &pr, 0, sizeof(pr));
 		message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
 		fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
-		if(end_process){
+		if(message_size < 0)
+		{
+			//timeout
+			close(sockfd);
+			perror("ERROR:Timeout");
+			exit(1);
+		}
+		else if(end_process)
+		{
 			memset((char *) &ps, 0, sizeof(ps));
 			ps.seq_num = currSeq + 1;
 			ps.ack_num = 0;
@@ -200,36 +217,51 @@ int main(int argc, char **argv)
 			}while(pr.ack != 1 && pr.ack_num != currSeq);
 			
 			//wait 2 seconds while responding to each incoming FIN with ack while dropping other packets
-			time_t start, end;
-			double elapsed = 0;
-			start = time(NULL);
+			
 
-			while(elapsed < 2)
+			int leave = 1;
+
+			struct timeval start, end;
+			gettimeofday(&start, NULL);
+			struct timeval timeout2 = {1, 0};
+
+			if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout2, sizeof(struct timeval)) < 0)
 			{
+				perror("ERROR:setting timeout\n");
+			}
+			
+			while(leave)
+			{
+				gettimeofday(&end, NULL);
+				if(end.tv_sec - start.tv_sec > 2)
+					leave = 0;
 				memset((char *) &ps, 0, sizeof(ps));
 				memset((char *) &pr, 0, sizeof(pr));
-				end = time(NULL);
-				elapsed = difftime(end, start);
 				message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
-				fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
-				if(pr.fin == 1)
+				if(message_size > 0)
 				{
-					//ack
-					ps.seq_num = currSeq;
-					ps.ack = 1;
-					ps.ack_num = pr.seq_num + 1;
-					ps.fin = 0;
-					ps.syn = 0;
-					ps.size = 0;
-
-					if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0)
+					fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
+					if(pr.fin == 1)
 					{
-						perror("ERROR:sending message");
-						exit(1);
-					} 
+						//ack
+						ps.seq_num = currSeq;
+						ps.ack = 1;
+						ps.ack_num = pr.seq_num + 1;
+						ps.fin = 0;
+						ps.syn = 0;
+						ps.size = 0;
+
+						if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0)
+						{
+							perror("ERROR:sending message");
+							exit(1);
+						} 
+					}
 				}
+				
 			}
 			//break;
+
 			exit(0);
 		}
 		else if ((((currSeq + buflen)%25600) == pr.ack_num) && (currAck == pr.seq_num)){
@@ -243,7 +275,7 @@ int main(int argc, char **argv)
 		        }
 		        else{
 		        	end_process = 1;
-		        	continue;
+		        	//continue;
 		        }
 		    }
 			ps.seq_num = pr.ack_num;
