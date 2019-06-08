@@ -20,10 +20,10 @@ struct packet
 	int16_t ack;
 	int16_t syn;
 	int16_t fin;
-	int16_t filler;
+	int16_t size;
 
-	//char data[PAYLOAD];
-	char* data;
+	char data[PAYLOAD];
+	//char* data;
 };
 
 int filenum;
@@ -44,7 +44,6 @@ int main(int argc, char **argv)
 {
 	signal(SIGTERM, handle); //shell command kill
 	signal(SIGQUIT, handle); //C - \
-
 	int sockfd;
 	int port;
 	struct sockaddr_in serveraddr;
@@ -74,7 +73,7 @@ int main(int argc, char **argv)
 
 
 	//create socket
-	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
 	if (sockfd < 0)
 	{
@@ -194,12 +193,8 @@ int main(int argc, char **argv)
 			}
 			else
 			{
-				//copy data from client to file
-				//fprintf(stdout, "%s", pr.data);
-				//fwrite(pr.data, 1, sizeof(pr.data), fptr);
-				char* buffer = strdup(pr.data);
-				fwrite((buffer), sizeof(buffer), 1, fptr);
-				//fprintf(stdout, "%s", pr.data);
+			
+				fwrite(pr.data, 1, pr.size, fptr);
 
 				//temp
 				//fprintf(stdout, "WRITE %s\nFILE %s\n", pr.data, filename);
@@ -207,7 +202,7 @@ int main(int argc, char **argv)
 				memset((char *) &ps, 0, sizeof(ps));
 				//send message acking current message
 				ps.seq_num = nextSeq;
-				currAck = currAck + sizeof(pr.data);
+				currAck = currAck + pr.size;
 				ps.ack_num = currAck;
 				ps.ack = 1;
 				ps.syn = 0;
