@@ -20,10 +20,10 @@ struct packet
 	int16_t ack;
 	int16_t syn;
 	int16_t fin;
-	int16_t filler;
+	int16_t size;
 
-	//char data[PAYLOAD];
-	char* data;
+	char data[PAYLOAD];
+	//char* data;
 };
 
 int main(int argc, char **argv)
@@ -117,7 +117,7 @@ int main(int argc, char **argv)
 		currSeq = 0;
 
 	currAck = 0;
-	size_t buflen = 1;
+	int buflen;
 	int end_process = 0;
 	int begin_process = 1;
 	int redo = 0;
@@ -130,6 +130,7 @@ int main(int argc, char **argv)
 
 	memset((char *) &ps, 0, sizeof(ps));
 
+
 	fptr = fopen(filename, "r");
 
 	if (fptr == NULL)
@@ -137,8 +138,10 @@ int main(int argc, char **argv)
 		perror("ERROR:opening file\n");
 		exit(1);
 	}
+
+	fseek(fptr, 0, SEEK_SET);
 	memset((char *) &buffer, '\0', sizeof(buffer));
-	buflen = fread(buffer, PAYLOAD,1, (FILE*)fptr);
+	buflen = fread(ps.data, 1,PAYLOAD, fptr);
 	if (buflen < 1) {
         if (!feof(fptr)) {
             perror("ERROR:reading file\n");
@@ -156,8 +159,8 @@ int main(int argc, char **argv)
     ps.ack = 1;
     ps.syn = 0;
     ps.fin = 0;
-    //ps.data = buffer;
-    ps.data = strdup(buffer);
+    ps.size = buflen;
+   
 
     if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
     	perror("ERROR:sending message");
@@ -166,6 +169,8 @@ int main(int argc, char **argv)
     fprintf(stdout, "SEND %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", ps.seq_num, ps.ack_num, cwnd, ssthresh, ps.ack, ps.syn, ps.fin);
 
 	while(1){
+		memset((char *) &ps, 0, sizeof(ps));
+		memset((char *) &pr, 0, sizeof(pr));
 		message_size = recvfrom(sockfd, &pr, sizeof(pr), 0, (struct sockaddr *)&serveraddr, &addr_len);
 		fprintf(stdout, "RECV %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 " %" PRId16 "\n", pr.seq_num, pr.ack_num, cwnd, ssthresh, pr.ack, pr.syn, pr.fin);
 		if(end_process){
@@ -175,6 +180,7 @@ int main(int argc, char **argv)
 			ps.ack = 0;
 			ps.syn = 0;
 			ps.fin = 1;
+			ps.size = 0;
 			//ps.data = {0};
 
 			if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
@@ -215,6 +221,7 @@ int main(int argc, char **argv)
 					ps.ack_num = pr.seq_num + 1;
 					ps.fin = 0;
 					ps.syn = 0;
+					ps.size = 0;
 
 					if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0)
 					{
@@ -229,7 +236,7 @@ int main(int argc, char **argv)
 		else if ((currSeq + buflen == pr.ack_num) && (currAck == pr.seq_num)){
 			memset((char *) &ps, 0, sizeof(ps));
 			memset((char *) &buffer, '\0', sizeof(buffer));
-			buflen = fread(buffer, PAYLOAD,1, (FILE*)fptr);
+			buflen = fread(ps.data, 1,PAYLOAD, fptr);
 			if (buflen < 1) {
 		        if (!feof(fptr)) {
 		            perror("ERROR:reading file\n");
@@ -247,10 +254,9 @@ int main(int argc, char **argv)
 			ps.ack = 1;
 			ps.syn = 0;
 			ps.fin = 0;
+			ps.size = buflen;
 			//ps.data = buffer;
-			fprintf(stdout, "%s\n", buffer);
-			ps.data = strdup(buffer);
-			fprintf(stdout, "%s\n", ps.data);
+			
 
 			if(sendto(sockfd, &ps, sizeof(ps), 0, (const struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
 				perror("ERROR:sending message");
